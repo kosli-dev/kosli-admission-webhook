@@ -32,6 +32,24 @@ jobs:
       #   - attest the artifact in a Kosli flow (dogfooding: this webhook
       #     should be able to admit itself)
 
+  github-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # goreleaser needs full history + tags to compute the changelog
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: '.go-version'
+          check-latest: true
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   chart:
     runs-on: ubuntu-latest
     needs: image
