@@ -8,8 +8,8 @@ jobs:
   go:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - run: go vet ./...
@@ -28,8 +28,8 @@ jobs:
           - "--set platform.gkeAutopilot=true --set hostNetwork=true"
           - "--set webhook.namespaceSelector.mode=optIn --set webhook.interceptUpdates=true"
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
       - run: helm lint charts/kosli-admission-webhook --set kosli.org=ci --set kosli.environment=ci --set kosli.existingSecret=ci
       - run: >
           helm template ci charts/kosli-admission-webhook
@@ -41,5 +41,5 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build -t kosli-webhook:ci .
