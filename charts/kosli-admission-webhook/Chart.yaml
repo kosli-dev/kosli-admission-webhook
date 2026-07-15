@@ -5,8 +5,8 @@ description: >-
   Kosli environment policies and rejects non-compliant pods.
   Compatible with EKS, GKE (incl. Autopilot), AKS, OpenShift, and vanilla K8s.
 type: application
-version: 0.4.0
-appVersion: "1.0.0"
+version: 0.1.0
+appVersion: "0.1.0"
 keywords:
   - kosli
   - admission-controller
