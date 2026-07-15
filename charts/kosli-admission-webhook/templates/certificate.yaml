@@ -1,0 +1,31 @@
+{{- if eq .Values.certificates.provider "cert-manager" }}
+{{- if not .Values.certificates.certManager.issuerRef }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "kosli-webhook.fullname" . }}-selfsigned
+  labels: {{- include "kosli-webhook.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+{{- end }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "kosli-webhook.fullname" . }}
+  labels: {{- include "kosli-webhook.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "kosli-webhook.tlsSecretName" . }}
+  duration: 2160h    # 90 days
+  renewBefore: 720h  # 30 days
+  dnsNames:
+    - {{ include "kosli-webhook.fullname" . }}.{{ .Release.Namespace }}.svc
+    - {{ include "kosli-webhook.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    {{- if .Values.certificates.certManager.issuerRef }}
+    {{- toYaml .Values.certificates.certManager.issuerRef | nindent 4 }}
+    {{- else }}
+    name: {{ include "kosli-webhook.fullname" . }}-selfsigned
+    kind: Issuer
+    {{- end }}
+{{- end }}

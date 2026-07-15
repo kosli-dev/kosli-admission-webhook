@@ -1,0 +1,60 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "kosli-webhook.fullname" . }}
+  labels: {{- include "kosli-webhook.labels" . | nindent 4 }}
+  {{- if eq .Values.certificates.provider "cert-manager" }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "kosli-webhook.fullname" . }}
+  {{- else if eq .Values.certificates.provider "openshift-service-ca" }}
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+  {{- end }}
+webhooks:
+  - name: {{ include "kosli-webhook.name" . }}.kosli.com
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    matchPolicy: Equivalent
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+    clientConfig:
+      service:
+        name: {{ include "kosli-webhook.fullname" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate
+        port: {{ .Values.service.port }}
+      {{- if and (eq .Values.certificates.provider "manual") .Values.certificates.manual.caBundle }}
+      caBundle: {{ .Values.certificates.manual.caBundle }}
+      {{- end }}
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        operations:
+          - CREATE
+          {{- if .Values.webhook.interceptUpdates }}
+          - UPDATE
+          {{- end }}
+        scope: Namespaced
+    {{- if eq .Values.webhook.namespaceSelector.mode "optIn" }}
+    namespaceSelector:
+      matchLabels:
+        {{ .Values.webhook.namespaceSelector.optInLabel }}: "true"
+    {{- else }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - {{ .Release.Namespace }}
+            {{- range .Values.webhook.namespaceSelector.excludedNamespaces }}
+            - {{ . }}
+            {{- end }}
+    {{- end }}
+    {{- with .Values.webhook.objectSelector }}
+    objectSelector: {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.webhook.matchConditions }}
+    # requires Kubernetes 1.27+
+    matchConditions: {{- toYaml . | nindent 6 }}
+    {{- end }}

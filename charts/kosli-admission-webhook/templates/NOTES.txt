@@ -1,0 +1,45 @@
+*** EXPERIMENTAL: example implementation - not an official Kosli product   ***
+*** and not production-hardened. Keep failurePolicy=Ignore outside test    ***
+*** clusters. Details: README.md and TODO.md in the source repository.     ***
+
+Kosli admission webhook installed as release {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+
+Assertion scope:
+{{- if .Values.kosli.environment }}
+  Environment: {{ .Values.kosli.environment }} (org: {{ .Values.kosli.org }})
+{{- else }}
+  Policies: {{ join ", " .Values.kosli.policyNames }} (org: {{ .Values.kosli.org }})
+{{- end }}
+
+Failure policy: {{ .Values.webhook.failurePolicy }}
+{{- if eq .Values.webhook.failurePolicy "Ignore" }}
+  NOTE: running fail-open. Once verified in your cluster, switch to strict
+  enforcement with:
+    helm upgrade {{ .Release.Name }} <chart> --reuse-values --set webhook.failurePolicy=Fail
+{{- end }}
+
+{{- if eq .Values.webhook.namespaceSelector.mode "optIn" }}
+
+Enforcement is opt-in. Enable it per namespace with:
+  kubectl label namespace <ns> {{ .Values.webhook.namespaceSelector.optInLabel }}=true
+{{- end }}
+
+Verify:
+  1. kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "kosli-webhook.fullname" . }}
+  2. kubectl run test-bad --image=nginx:latest   # expect denial in enforced namespaces
+  3. kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "kosli-webhook.fullname" . }}
+
+{{- if eq .Values.certificates.provider "openshift-service-ca" }}
+
+TLS is issued by the OpenShift service-ca operator; no cert-manager needed.
+{{- end }}
+{{- if .Values.platform.gkeAutopilot }}
+
+GKE Autopilot mode: priorityClassName omitted.
+{{- end }}
+{{- if eq .Values.certificates.provider "cert-manager" }}
+
+GKE private clusters: allow the control-plane CIDR to reach nodes on
+port {{ .Values.service.targetPort }} or the API server cannot call this webhook
+(see README, "GKE private clusters").
+{{- end }}

@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "replicaCount": { "type": "integer", "minimum": 1 },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      },
+      "required": ["repository"]
+    },
+    "platform": {
+      "type": "object",
+      "properties": {
+        "gkeAutopilot": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "kosli": {
+      "type": "object",
+      "properties": {
+        "host": { "type": "string", "pattern": "^https://" },
+        "org": { "type": "string" },
+        "environment": { "type": "string" },
+        "policyNames": { "type": "array", "items": { "type": "string" } },
+        "existingSecret": { "type": "string" },
+        "existingSecretKey": { "type": "string", "minLength": 1 },
+        "apiToken": { "type": "string" }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": { "enum": ["debug", "info", "warn", "error"] },
+        "format": { "enum": ["json", "text"] }
+      }
+    },
+    "hostNetwork": { "type": "boolean" },
+    "proxy": {
+      "type": "object",
+      "properties": {
+        "httpsProxy": { "type": "string" },
+        "httpProxy": { "type": "string" },
+        "noProxy": { "type": "string" }
+      }
+    },
+    "webhook": {
+      "type": "object",
+      "properties": {
+        "failurePolicy": { "enum": ["Ignore", "Fail"] },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 30 },
+        "requireDigestPinning": { "type": "boolean" },
+        "denyUnknownArtifacts": { "type": "boolean" },
+        "cacheTTL": { "type": "string", "pattern": "^[0-9]+(ns|us|ms|s|m|h)$|^0$" },
+        "shutdownDelay": { "type": "string", "pattern": "^[0-9]+(ns|us|ms|s|m|h)$|^0$" },
+        "interceptUpdates": { "type": "boolean" },
+        "matchConditions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "expression": { "type": "string", "minLength": 1 }
+            },
+            "required": ["name", "expression"]
+          }
+        },
+        "namespaceSelector": {
+          "type": "object",
+          "properties": {
+            "mode": { "enum": ["exclude", "optIn"] },
+            "excludedNamespaces": { "type": "array", "items": { "type": "string" } },
+            "optInLabel": { "type": "string", "minLength": 1 }
+          }
+        },
+        "objectSelector": { "type": "object" }
+      }
+    },
+    "certificates": {
+      "type": "object",
+      "properties": {
+        "provider": { "enum": ["cert-manager", "openshift-service-ca", "manual"] },
+        "certManager": {
+          "type": "object",
+          "properties": { "issuerRef": { "type": "object" } }
+        },
+        "manual": {
+          "type": "object",
+          "properties": {
+            "secretName": { "type": "string" },
+            "caBundle": { "type": "string" }
+          }
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "targetPort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "terminationGracePeriodSeconds": { "type": "integer", "minimum": 0 },
+    "podSecurityContext": { "type": "object" },
+    "containerSecurityContext": { "type": "object" },
+    "serviceAccount": { "type": "object" },
+    "podDisruptionBudget": { "type": "object" },
+    "resources": { "type": "object" },
+    "podAnnotations": { "type": "object" },
+    "nodeSelector": { "type": "object" },
+    "tolerations": { "type": "array" },
+    "topologySpreadConstraints": { "type": "array" },
+    "priorityClassName": { "type": "string" },
+    "imagePullSecrets": { "type": "array" }
+  }
+}

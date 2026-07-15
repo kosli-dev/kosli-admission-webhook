@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kosli-webhook.fullname" . }}
+  labels: {{- include "kosli-webhook.labels" . | nindent 4 }}
+  {{- if eq .Values.certificates.provider "openshift-service-ca" }}
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: {{ include "kosli-webhook.tlsSecretName" . }}
+  {{- end }}
+spec:
+  selector: {{- include "kosli-webhook.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: https
+      port: {{ .Values.service.port }}
+      targetPort: https
+---
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "kosli-webhook.serviceAccountName" . }}
+  labels: {{- include "kosli-webhook.labels" . | nindent 4 }}
+  {{- with .Values.serviceAccount.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+---
+{{- if and (not .Values.kosli.existingSecret) .Values.kosli.apiToken }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "kosli-webhook.tokenSecretName" . }}
+  labels: {{- include "kosli-webhook.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  {{ .Values.kosli.existingSecretKey }}: {{ .Values.kosli.apiToken | quote }}
+{{- end }}
+---
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kosli-webhook.fullname" . }}
+  labels: {{- include "kosli-webhook.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels: {{- include "kosli-webhook.selectorLabels" . | nindent 6 }}
+{{- end }}

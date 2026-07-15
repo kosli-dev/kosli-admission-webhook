@@ -1,0 +1,170 @@
+# -- Number of webhook replicas. Keep >= 2: with failurePolicy=Fail this
+# webhook is on the pod-creation critical path for the whole cluster.
+replicaCount: 2
+
+image:
+  repository: ghcr.io/kosli-dev/kosli-webhook
+  tag: ""          # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# -- Platform compatibility switches.
+platform:
+  # -- Set true on GKE Autopilot: omits priorityClassName (Autopilot rejects
+  # system-cluster-critical for user workloads).
+  gkeAutopilot: false
+
+# -- Pod-level security context. Deliberately does NOT pin runAsUser: the
+# image declares a numeric non-root USER (65532) and runAsNonRoot makes the
+# kubelet verify it, while OpenShift's restricted SCC remains free to assign
+# a namespace-range UID. Fully overridable.
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container-level security context (restricted PSS compliant). Fully
+# overridable.
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+kosli:
+  # -- Kosli API host. Use https://app.us.kosli.com for US-hosted orgs.
+  host: https://app.kosli.com
+  # -- Your Kosli organization name (required).
+  org: ""
+  # -- Kosli environment whose attached policies are asserted (required
+  # unless policyNames is set).
+  environment: ""
+  # -- Assert against specific named policies instead of an environment.
+  # Mutually exclusive with `environment`.
+  policyNames: []
+  # -- Name of an existing Secret containing the API token. If empty and
+  # apiToken is set, the chart creates a Secret. Prefer existingSecret in
+  # production (e.g. synced by external-secrets).
+  existingSecret: ""
+  existingSecretKey: api-token
+  # -- Kosli service-account API token. Only used when existingSecret is
+  # empty. Do NOT commit this to git; pass with --set or a values override.
+  apiToken: ""
+
+# -- Structured logging.
+logging:
+  level: info        # debug | info | warn | error
+  format: json       # json | text
+
+# -- Run the webhook on the host network. Needed on clusters where the
+# managed control plane cannot reach pod IPs (e.g. EKS with a non-VPC CNI
+# such as Calico). Pick a targetPort free on the nodes.
+hostNetwork: false
+
+# -- Outbound proxy for clusters whose egress goes through a corporate proxy.
+# Allowlist the Kosli host on the proxy.
+proxy:
+  httpsProxy: ""
+  httpProxy: ""
+  noProxy: ""
+
+webhook:
+  # -- Ignore = fail open (recommended for initial rollout),
+  # Fail = fail closed (strict enforcement).
+  failurePolicy: Ignore
+  timeoutSeconds: 10
+  # -- Reject pods whose images are not pinned by sha256 digest.
+  requireDigestPinning: true
+  # -- Treat artifacts unknown to Kosli (404) as non-compliant.
+  denyUnknownArtifacts: true
+  # -- TTL for the in-memory assert-result cache (0 disables).
+  cacheTTL: 60s
+  # -- Drain delay after SIGTERM before the server stops accepting requests
+  # (covers endpoint propagation during rolling updates).
+  shutdownDelay: 5s
+  # -- CEL matchConditions forwarded to the webhook config (K8s 1.27+).
+  # Example: skip pods created by a trusted controller service account:
+  # matchConditions:
+  #   - name: exclude-trusted-sa
+  #     expression: request.userInfo.username != "system:serviceaccount:ci:trusted"
+  matchConditions: []
+  # -- Also intercept pod UPDATE (catches ephemeral containers added via
+  # `kubectl debug`).
+  interceptUpdates: false
+  namespaceSelector:
+    # -- "exclude": enforce everywhere except excludedNamespaces.
+    # "optIn": enforce only in namespaces labeled with optInLabel=true.
+    mode: exclude
+    excludedNamespaces:
+      - kube-system
+      - kube-node-lease
+      - kube-public
+      - cert-manager
+      # OpenShift system namespaces (harmless on other platforms)
+      - openshift-kube-apiserver
+      - openshift-etcd
+      - openshift-apiserver
+      - openshift-monitoring
+      - openshift-operators
+    optInLabel: kosli-enforce
+  # -- Extra objectSelector for the webhook, if you want to scope by pod labels.
+  objectSelector: {}
+
+certificates:
+  # -- TLS provisioning provider:
+  # "cert-manager"          — Certificate + Issuer, CA injected via cainjector
+  # "openshift-service-ca"  — OpenShift service-ca operator annotations,
+  #                           zero extra components (OpenShift only)
+  # "manual"                — you supply the TLS Secret and CA bundle
+  provider: cert-manager
+  certManager:
+    # -- Use an existing Issuer/ClusterIssuer instead of creating a
+    # self-signed Issuer.
+    issuerRef: {}
+    #   name: my-issuer
+    #   kind: ClusterIssuer
+  manual:
+    # Name of a Secret of type kubernetes.io/tls in the release namespace.
+    secretName: ""
+    # Base64-encoded CA bundle for the ValidatingWebhookConfiguration.
+    caBundle: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  port: 443
+  # -- Container listen port. On GKE private clusters either open a firewall
+  # rule from the control-plane CIDR to this port, or see the README.
+  targetPort: 8443
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+
+terminationGracePeriodSeconds: 30
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+# -- Spread replicas across nodes by default.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: kosli-admission-webhook
+
+# -- Ignored when platform.gkeAutopilot=true.
+priorityClassName: system-cluster-critical

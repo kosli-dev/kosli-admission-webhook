@@ -1,0 +1,45 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+      - run: CGO_ENABLED=0 go build ./cmd/webhook
+
+  helm:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # render every supported platform permutation
+        args:
+          - "--set certificates.provider=cert-manager"
+          - "--set certificates.provider=openshift-service-ca"
+          - "--set certificates.provider=manual --set certificates.manual.secretName=t --set certificates.manual.caBundle=Zm9v"
+          - "--set platform.gkeAutopilot=true --set hostNetwork=true"
+          - "--set webhook.namespaceSelector.mode=optIn --set webhook.interceptUpdates=true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint charts/kosli-admission-webhook --set kosli.org=ci --set kosli.environment=ci --set kosli.existingSecret=ci
+      - run: >
+          helm template ci charts/kosli-admission-webhook
+          --set kosli.org=ci --set kosli.environment=ci --set kosli.existingSecret=ci
+          ${{ matrix.args }} > /dev/null
+      # TODO(see TODO.md "small stuff"): add chart-testing (ct) and kubeconform
+      # schema validation against multiple K8s versions.
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t kosli-webhook:ci .
