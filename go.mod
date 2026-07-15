@@ -1,6 +1,6 @@
 module github.com/kosli-dev/kosli-admission-webhook
 
-go 1.26
+go 1.26.0
 
 require (
 	k8s.io/api v0.36.2
