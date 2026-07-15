@@ -1,0 +1,79 @@
+version: 2
+
+project_name: kosli-admission-webhook
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/webhook
+    binary: kosli-admission-webhook
+    env:
+      - CGO_ENABLED=0
+      - GOTELEMETRY=off
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_sha256_checksums.txt"
+  algorithm: sha256
+
+changelog:
+  use: github # github(-native)
+  sort: asc
+  format: "{{ .SHA }}: {{ .Message }}{{ with .AuthorUsername }} (@{{ . }}){{ end }}"
+  # Groups are disabled when using 'github-native'.
+  groups:
+    - title: "🚀 New Features"
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 100
+    - title: "🔒 Security updates"
+      regexp: '^.*?sec(\(.+\))??!?:.+$'
+      order: 150
+    - title: "🐛 Bug fixes"
+      regexp: '^.*?(fix|refactor|bug)(\(.+\))??!?:.+$'
+      order: 200
+    - title: "📝 Documentation updates"
+      regexp: ^.*?docs?(\(.+\))??!?:.+$
+      order: 400
+    - title: 🎯 Other work
+      order: 9999
+  filters:
+    exclude:
+      - "^test:"
+      - "^test\\("
+      - "^chore: schema$"
+      - "^chore: typo$"
+      - "^chore: auto-update generated files$"
+      - "^chore: update schema$"
+      - "^chore: schema update$"
+      - "^(build|ci): "
+      - "merge conflict"
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+      - typo
+
+release:
+  prerelease: auto
+  draft: false
+  disable: false
+  footer: |
+    ---
+    **Container image**: `ghcr.io/kosli-dev/kosli-admission-webhook:{{ .Tag }}`
+    **Helm chart**: `oci://ghcr.io/kosli-dev/charts/kosli-admission-webhook`
