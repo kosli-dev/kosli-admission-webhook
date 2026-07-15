@@ -12,6 +12,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          check-latest: true
       - run: go vet ./...
       - run: go test ./...
       - run: CGO_ENABLED=0 go build ./cmd/webhook
