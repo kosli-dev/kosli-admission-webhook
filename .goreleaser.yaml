@@ -34,7 +34,8 @@ checksum:
   algorithm: sha256
 
 changelog:
-  use: github # github(-native)
+  #use: git # github(-native)
+  use: github #git # github(-native)
   sort: asc
   format: "{{ .SHA }}: {{ .Message }}{{ with .AuthorUsername }} (@{{ . }}){{ end }}"
   # Groups are disabled when using 'github-native'.
