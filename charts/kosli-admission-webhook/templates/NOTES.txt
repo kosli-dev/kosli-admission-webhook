@@ -7,8 +7,10 @@ Kosli admission webhook installed as release {{ .Release.Name }} in namespace {{
 Assertion scope:
 {{- if .Values.kosli.environment }}
   Environment: {{ .Values.kosli.environment }} (org: {{ .Values.kosli.org }})
-{{- else }}
+{{- else if .Values.kosli.policyNames }}
   Policies: {{ join ", " .Values.kosli.policyNames }} (org: {{ .Values.kosli.org }})
+{{- else }}
+  Org default (no environment_name/policy_name sent; org: {{ .Values.kosli.org }})
 {{- end }}
 
 Failure policy: {{ .Values.webhook.failurePolicy }}
@@ -27,7 +29,8 @@ Enforcement is opt-in. Enable it per namespace with:
 Verify:
   1. kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "kosli-webhook.fullname" . }}
   2. kubectl run test-bad --image=nginx:latest   # expect denial in enforced namespaces
-  3. kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "kosli-webhook.fullname" . }}
+  3. kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/instance={{ .Release.Name }} --prefix --tail=-1
+     (label selector: streams all {{ .Values.replicaCount }} replicas; logs deploy/... follows only one pod)
 
 {{- if eq .Values.certificates.provider "openshift-service-ca" }}
 

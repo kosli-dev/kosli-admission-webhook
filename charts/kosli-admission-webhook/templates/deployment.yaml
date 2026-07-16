@@ -62,6 +62,10 @@ spec:
             {{- end }}
             - name: REQUIRE_DIGEST_PINNING
               value: {{ .Values.webhook.requireDigestPinning | quote }}
+            {{- if .Values.webhook.registryCredentialsSecret }}
+            - name: DOCKER_CONFIG
+              value: /docker-config
+            {{- end }}
             - name: DENY_UNKNOWN_ARTIFACTS
               value: {{ .Values.webhook.denyUnknownArtifacts | quote }}
             - name: CACHE_TTL
@@ -93,6 +97,11 @@ spec:
             - name: tls
               mountPath: /certs
               readOnly: true
+            {{- if .Values.webhook.registryCredentialsSecret }}
+            - name: registry-credentials
+              mountPath: /docker-config
+              readOnly: true
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /readyz
@@ -118,6 +127,16 @@ spec:
               - key: tls.key
                 path: tls.key
             {{- end }}
+        {{- if .Values.webhook.registryCredentialsSecret }}
+        # the keychain expects $DOCKER_CONFIG/config.json; dockerconfigjson
+        # Secrets store the payload under the .dockerconfigjson key
+        - name: registry-credentials
+          secret:
+            secretName: {{ .Values.webhook.registryCredentialsSecret }}
+            items:
+              - key: .dockerconfigjson
+                path: config.json
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector: {{- toYaml . | nindent 8 }}
       {{- end }}

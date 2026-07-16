@@ -16,6 +16,7 @@ import (
 	"github.com/kosli-dev/kosli-admission-webhook/internal/admission"
 	"github.com/kosli-dev/kosli-admission-webhook/internal/config"
 	"github.com/kosli-dev/kosli-admission-webhook/internal/kosli"
+	"github.com/kosli-dev/kosli-admission-webhook/internal/resolver"
 	"github.com/kosli-dev/kosli-admission-webhook/internal/tlsreload"
 )
 
@@ -36,7 +37,12 @@ func main() {
 		"listen", cfg.ListenAddr,
 	)
 
-	srv := &admission.Server{Cfg: cfg, Kosli: kosli.New(cfg), Log: log}
+	srv := &admission.Server{
+		Cfg:      cfg,
+		Kosli:    kosli.New(cfg, log),
+		Resolver: resolver.New(cfg.CacheTTL),
+		Log:      log,
+	}
 
 	reloader, err := tlsreload.New(cfg.CertFile, cfg.KeyFile, log)
 	if err != nil {

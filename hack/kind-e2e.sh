@@ -3,19 +3,31 @@
 # using an in-cluster mock of the Kosli assert API (no credentials needed).
 #
 # Prereqs: docker, kind, kubectl, helm
-# Usage:   ./hack/kind-e2e.sh                 # create cluster, run tests, clean up
+# Usage:   ./hack/kind-e2e.sh                 # create cluster (or reuse an
+#                                             # existing kosli-e2e one), run
+#                                             # tests, clean up
+#          FRESH=1 ./hack/kind-e2e.sh         # delete an existing kosli-e2e
+#                                             # cluster and start clean
 #          KEEP=1 ./hack/kind-e2e.sh          # keep cluster + images for inspection
+#          KEEP_ON_FAIL=1 ./hack/kind-e2e.sh  # clean up on success, but keep the
+#                                             # cluster for debugging when anything
+#                                             # fails (handy in CI-triage loops)
+#          SHOW_LOGS=1 ./hack/kind-e2e.sh     # print the webhook's decision log
+#                                             # lines after the assertions
 #          CLEAN_IMAGES=1 ./hack/kind-e2e.sh  # also remove the cached kindest/node
 #                                             # image — frees ~900MB, slows next run
 #
 # LIVE mode — test against the real Kosli API instead of the mock:
-#          LIVE=1 KOSLI_ORG=my-org KOSLI_API_TOKEN=... KOSLI_ENVIRONMENT=e2e \
+#          LIVE=1 KOSLI_ORG=my-org KOSLI_API_TOKEN=... \
+#            [KOSLI_ENVIRONMENT=e2e]                # empty = org default
 #            [KOSLI_HOST=https://app.kosli.com] \
 #            [COMPLIANT_IMAGE=repo@sha256:<digest>] ./hack/kind-e2e.sh
 #          COMPLIANT_IMAGE must be an artifact that is compliant against the
 #          policies attached to KOSLI_ENVIRONMENT (see README, "Live Kosli
 #          mode"). Without it the compliant-admission case is skipped; the
-#          two denial cases run either way.
+#          two denial cases run either way. The compliant-tag case (webhook
+#          resolves a tag to its digest via the registry) runs in mock mode
+#          only, since it needs a tag whose digest is compliant.
 set -euo pipefail
 
 CLUSTER=kosli-e2e
@@ -25,10 +37,16 @@ CHART=charts/kosli-admission-webhook
 
 cleanup() {
   local rc=$?
+  local keep_reason=""
   if [[ "${KEEP:-0}" == "1" ]]; then
-    echo "==> KEEP=1: leaving everything in place"
+    keep_reason="KEEP=1"
+  elif [[ $rc -ne 0 && "${KEEP_ON_FAIL:-0}" == "1" ]]; then
+    keep_reason="KEEP_ON_FAIL=1 and exit code $rc"
+  fi
+  if [[ -n "$keep_reason" ]]; then
+    echo "==> $keep_reason: leaving everything in place"
     echo "    inspect:  kubectl -n $NS get all"
-    echo "    logs:     kubectl -n $NS logs deploy/kosli-webhook-kosli-admission-webhook -f"
+    echo "    logs:     kubectl -n $NS logs -l app.kubernetes.io/instance=kosli-webhook -f --prefix --tail=-1  # all replicas"
     echo "    tear down later: KEEP=0 CLUSTER_ONLY=1 ./hack/kind-e2e.sh  (or: kind delete cluster --name $CLUSTER)"
     return "$rc"
   fi
@@ -56,13 +74,27 @@ LIVE="${LIVE:-0}"
 if [[ "$LIVE" == "1" ]]; then
   : "${KOSLI_ORG:?LIVE=1 requires KOSLI_ORG}"
   : "${KOSLI_API_TOKEN:?LIVE=1 requires KOSLI_API_TOKEN}"
-  : "${KOSLI_ENVIRONMENT:?LIVE=1 requires KOSLI_ENVIRONMENT}"
+  # optional: empty asserts against the org default instead of an environment
+  KOSLI_ENVIRONMENT="${KOSLI_ENVIRONMENT:-}"
   KOSLI_HOST="${KOSLI_HOST:-https://app.kosli.com}"
-  echo "==> LIVE mode: $KOSLI_HOST org=$KOSLI_ORG environment=$KOSLI_ENVIRONMENT"
+  echo "==> LIVE mode: $KOSLI_HOST org=$KOSLI_ORG environment=${KOSLI_ENVIRONMENT:-<org default>}"
 fi
 
 echo "==> 1/7 kind cluster"
-kind create cluster --name "$CLUSTER" --wait 120s
+REUSED=0
+if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
+  if [[ "${FRESH:-0}" == "1" ]]; then
+    echo "    FRESH=1: deleting existing cluster $CLUSTER"
+    kind delete cluster --name "$CLUSTER"
+    kind create cluster --name "$CLUSTER" --wait 120s
+  else
+    REUSED=1
+    echo "    reusing existing cluster $CLUSTER (set FRESH=1 to recreate)"
+    kubectl config use-context "kind-$CLUSTER" >/dev/null
+  fi
+else
+  kind create cluster --name "$CLUSTER" --wait 120s
+fi
 
 echo "==> 2/7 cert-manager"
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
@@ -176,11 +208,50 @@ helm upgrade --install kosli-webhook "$CHART" -n "$NS" \
   --set webhook.failurePolicy=Fail \
   --set webhook.cacheTTL=0s \
   --wait --timeout 180s
+if [[ "$REUSED" == "1" ]]; then
+  # same image tag + pullPolicy Never: helm sees no spec change on a reused
+  # cluster, so running pods would keep the previously loaded image
+  echo "    restarting deployments to pick up the freshly loaded image"
+  kubectl -n "$NS" rollout restart deploy
+  for d in $(kubectl -n "$NS" get deploy -o name); do
+    kubectl -n "$NS" rollout status "$d" --timeout=180s
+  done
+fi
+
+# helm --wait covers the Deployment only: cert-manager's cainjector fills the
+# webhook's caBundle asynchronously, and until it does the API server cannot
+# call the webhook — failurePolicy=Fail then rejects pods with "failed calling
+# webhook" (x509) instead of a Kosli verdict. Only a fresh install races this.
+echo "    waiting for the CA bundle on the webhook configuration"
+for i in $(seq 1 30); do
+  ca=$(kubectl get validatingwebhookconfiguration kosli-webhook-kosli-admission-webhook \
+    -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 2>/dev/null || true)
+  [[ -n "$ca" ]] && break
+  if [[ $i -eq 30 ]]; then echo "    caBundle not injected after 60s"; exit 1; fi
+  sleep 2
+done
+
+# rollout status returns when the NEW pods are ready, but the OLD pods keep
+# serving admission reviews during their graceful drain (the API server holds
+# keep-alive connections to them). A check that fires in that window gets
+# answered — and logged — by a pod that vanishes seconds later, which makes
+# the decision log look empty. Wait until no webhook pod is Terminating.
+echo "    waiting for old webhook pods to finish draining"
+for i in $(seq 1 60); do
+  if ! kubectl -n "$NS" get pods -l app.kubernetes.io/instance=kosli-webhook \
+      -o jsonpath='{.items[*].metadata.deletionTimestamp}' 2>/dev/null | grep -q .; then
+    break
+  fi
+  if [[ $i -eq 60 ]]; then echo "    old pods still terminating after 120s"; exit 1; fi
+  sleep 2
+done
 
 echo "==> 7/7 assertions"
 pass=0; fail=0
 check() { # name, expected(0=admitted,1=denied), image
   local name=$1 expected=$2 out got; shift 2
+  # leftover from an aborted run on a reused cluster would fail kubectl run
+  kubectl delete pod "$name" --ignore-not-found >/dev/null 2>&1
   if out=$(kubectl run "$name" --image="$1" --restart=Never 2>&1); then got=0; else got=1; fi
   kubectl delete pod "$name" --ignore-not-found >/dev/null 2>&1
   if [[ $got == "$expected" ]]; then echo "  PASS $name"; pass=$((pass+1)); else echo "  FAIL $name (expected $expected, got $got)"; fail=$((fail+1)); fi
@@ -192,10 +263,23 @@ check() { # name, expected(0=admitted,1=denied), image
 if [[ -n "${COMPLIANT_REF:-}" ]]; then
   check compliant-digest 0 "$COMPLIANT_REF"
 else
-  echo "  SKIP compliant-digest (set COMPLIANT_IMAGE=repo@sha256:<digest> of an artifact compliant in '$KOSLI_ENVIRONMENT')"
+  echo "  SKIP compliant-digest (set COMPLIANT_IMAGE=repo@sha256:<digest> of an artifact compliant in '${KOSLI_ENVIRONMENT:-the org default}')"
+fi
+if [[ "$LIVE" != "1" ]]; then
+  # the webhook resolves the tag to the same digest the mock knows as compliant
+  check compliant-tag    0 "busybox:latest"
 fi
 check unknown-digest     1 "busybox@sha256:$(printf 'a%.0s' {1..64})"
-check unpinned-tag       1 "nginx:latest"
+# resolves via Docker Hub to a digest the Kosli scope has never seen
+check unknown-tag        1 "nginx:latest"
+
+if [[ "${SHOW_LOGS:-0}" == "1" ]]; then
+  echo
+  echo "==> webhook decision log for this run (survives pod-restart/tail timing)"
+  kubectl -n "$NS" logs -l app.kubernetes.io/instance=kosli-webhook --prefix --tail=-1 2>/dev/null \
+    | grep -E '"msg":"(admission decision|kosli assert result|resolved tag to digest)"' \
+    | sed 's/^/    /' || echo "    (no decision lines found in current pods)"
+fi
 
 echo
 echo "passed=$pass failed=$fail"

@@ -37,8 +37,9 @@ kosli:
   host: https://app.kosli.com
   # -- Your Kosli organization name (required).
   org: ""
-  # -- Kosli environment whose attached policies are asserted (required
-  # unless policyNames is set).
+  # -- Kosli environment whose attached policies are asserted. Mutually
+  # exclusive with policyNames; leave both empty to assert against the
+  # org default.
   environment: ""
   # -- Assert against specific named policies instead of an environment.
   # Mutually exclusive with `environment`.
@@ -74,8 +75,22 @@ webhook:
   # Fail = fail closed (strict enforcement).
   failurePolicy: Ignore
   timeoutSeconds: 10
-  # -- Reject pods whose images are not pinned by sha256 digest.
-  requireDigestPinning: true
+  # -- When false (default), images referenced by tag have their sha256
+  # digest resolved from the image registry at admission time (manifest
+  # HEAD request; public registries work anonymously, private ones need a
+  # Docker config mounted and DOCKER_CONFIG set). NOTE: tags are mutable —
+  # the verdict applies to the digest the tag pointed at during admission,
+  # not necessarily what the node pulls (e.g. imagePullPolicy:
+  # IfNotPresent). Set true to instead reject any pod whose images are not
+  # pinned as repo@sha256:<digest> — the strict-guarantee mode.
+  requireDigestPinning: false
+  # -- Name of an existing Secret of type kubernetes.io/dockerconfigjson
+  # whose credentials the webhook uses to resolve tags in private
+  # registries. Empty = anonymous access (public registries only). Note
+  # these credentials are cluster-wide for the webhook — one read-only
+  # pull account covering all private registries in use, unlike
+  # per-namespace imagePullSecrets.
+  registryCredentialsSecret: ""
   # -- Treat artifacts unknown to Kosli (404) as non-compliant.
   denyUnknownArtifacts: true
   # -- TTL for the in-memory assert-result cache (0 disables).
