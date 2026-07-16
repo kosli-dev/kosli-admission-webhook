@@ -1,3 +1,5 @@
+[![test](https://github.com/kosli-dev/kosli-admission-webhook/actions/workflows/test.yaml/badge.svg)](https://github.com/kosli-dev/kosli-admission-webhook/actions/workflows/test.yaml)
+
 # kosli-admission-webhook
 
 > [!WARNING]
