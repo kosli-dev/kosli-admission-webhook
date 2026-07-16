@@ -2,12 +2,14 @@
 package admission
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -15,12 +17,14 @@ import (
 
 	"github.com/kosli-dev/kosli-admission-webhook/internal/config"
 	"github.com/kosli-dev/kosli-admission-webhook/internal/kosli"
+	"github.com/kosli-dev/kosli-admission-webhook/internal/resolver"
 )
 
 type Server struct {
-	Cfg   *config.Config
-	Kosli *kosli.Client
-	Log   *slog.Logger
+	Cfg      *config.Config
+	Kosli    *kosli.Client
+	Resolver *resolver.Resolver
+	Log      *slog.Logger
 }
 
 func FingerprintFromImage(image string) (string, bool) {
@@ -47,7 +51,7 @@ func (s *Server) Validate(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(review.Request.Object.Raw, &pod); err != nil {
 		allowed, reason = false, "cannot decode pod: "+err.Error()
 	} else {
-		allowed, reason = s.checkPod(&pod)
+		allowed, reason = s.checkPod(r.Context(), &pod)
 	}
 
 	verdict := "allow"
@@ -84,7 +88,7 @@ func podName(pod *corev1.Pod, req *admissionv1.AdmissionRequest) string {
 	return req.Name
 }
 
-func (s *Server) checkPod(pod *corev1.Pod) (bool, string) {
+func (s *Server) checkPod(ctx context.Context, pod *corev1.Pod) (bool, string) {
 	containers := make([]corev1.Container, 0,
 		len(pod.Spec.InitContainers)+len(pod.Spec.Containers)+len(pod.Spec.EphemeralContainers))
 	containers = append(containers, pod.Spec.InitContainers...)
@@ -100,8 +104,17 @@ func (s *Server) checkPod(pod *corev1.Pod) (bool, string) {
 				return false, fmt.Sprintf(
 					"image %q is not pinned by sha256 digest; deploy images as repo@sha256:<digest>", c.Image)
 			}
-			s.Log.Warn("skipping unpinned image", "image", c.Image)
-			continue
+			// Cap each resolution well below the webhook's timeoutSeconds
+			// so a slow registry surfaces as a reasoned deny, not a
+			// webhook timeout subject to failurePolicy.
+			rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			resolved, err := s.Resolver.Resolve(rctx, c.Image)
+			cancel()
+			if err != nil {
+				return false, fmt.Sprintf("cannot resolve sha256 digest for image %q: %v", c.Image, err)
+			}
+			s.Log.Info("resolved tag to digest", "image", c.Image, "fingerprint", resolved)
+			fp = resolved
 		}
 		res := s.Kosli.Assert(fp)
 		if !res.Allowed {

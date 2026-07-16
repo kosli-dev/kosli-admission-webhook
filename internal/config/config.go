@@ -29,11 +29,13 @@ type Config struct {
 
 func Load() (*Config, error) {
 	c := &Config{
-		Host:                 getenv("KOSLI_HOST", "https://app.kosli.com"),
-		Org:                  os.Getenv("KOSLI_ORG"),
-		Environment:          os.Getenv("KOSLI_ENVIRONMENT"),
-		Token:                os.Getenv("KOSLI_API_TOKEN"),
-		RequireDigestPinning: getenvBool("REQUIRE_DIGEST_PINNING", true),
+		Host:        getenv("KOSLI_HOST", "https://app.kosli.com"),
+		Org:         os.Getenv("KOSLI_ORG"),
+		Environment: os.Getenv("KOSLI_ENVIRONMENT"),
+		Token:       os.Getenv("KOSLI_API_TOKEN"),
+		// When false (default), unpinned images have their digest resolved
+		// from the image registry; when true, they are denied outright.
+		RequireDigestPinning: getenvBool("REQUIRE_DIGEST_PINNING", false),
 		DenyUnknownArtifacts: getenvBool("DENY_UNKNOWN_ARTIFACTS", true),
 		CertFile:             getenv("TLS_CERT_FILE", "/certs/tls.crt"),
 		KeyFile:              getenv("TLS_KEY_FILE", "/certs/tls.key"),
@@ -77,11 +79,9 @@ func Load() (*Config, error) {
 	if c.Org == "" || c.Token == "" {
 		return nil, fmt.Errorf("KOSLI_ORG and KOSLI_API_TOKEN are required")
 	}
+	// Both empty is fine: the assert API then evaluates the org default.
 	if c.Environment != "" && len(c.PolicyNames) > 0 {
 		return nil, fmt.Errorf("KOSLI_ENVIRONMENT and KOSLI_POLICY_NAMES are mutually exclusive")
-	}
-	if c.Environment == "" && len(c.PolicyNames) == 0 {
-		return nil, fmt.Errorf("one of KOSLI_ENVIRONMENT or KOSLI_POLICY_NAMES must be set")
 	}
 	return c, nil
 }
@@ -103,7 +103,10 @@ func (c *Config) Scope() string {
 	if len(c.PolicyNames) > 0 {
 		return "policies=" + strings.Join(c.PolicyNames, ",")
 	}
-	return "environment=" + c.Environment
+	if c.Environment != "" {
+		return "environment=" + c.Environment
+	}
+	return "org-default"
 }
 
 func getenv(k, d string) string {

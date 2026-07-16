@@ -50,13 +50,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
-{{/* Validate mutually exclusive assertion scopes */}}
+{{/* Validate mutually exclusive assertion scopes (neither = org default) */}}
 {{- define "kosli-webhook.validateScope" -}}
 {{- if and .Values.kosli.environment .Values.kosli.policyNames -}}
 {{- fail "kosli.environment and kosli.policyNames are mutually exclusive" -}}
-{{- end -}}
-{{- if and (not .Values.kosli.environment) (not .Values.kosli.policyNames) -}}
-{{- fail "one of kosli.environment or kosli.policyNames must be set" -}}
 {{- end -}}
 {{- end -}}
 

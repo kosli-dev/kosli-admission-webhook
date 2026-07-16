@@ -49,12 +49,13 @@ kubectl -n kosli-system create secret generic kosli-credentials \
 | Value | Default | Description |
 |---|---|---|
 | `kosli.org` | `""` | Kosli organization (required) |
-| `kosli.environment` | `""` | Environment whose policies are asserted |
+| `kosli.environment` | `""` | Environment whose policies are asserted (leave empty along with `policyNames` for the org default) |
 | `kosli.policyNames` | `[]` | Assert named policies instead of an environment (mutually exclusive with `environment`) |
 | `kosli.host` | `https://app.kosli.com` | Use `https://app.us.kosli.com` for US orgs |
 | `kosli.existingSecret` | `""` | Existing Secret with the API token (preferred) |
 | `webhook.failurePolicy` | `Ignore` | `Ignore` = fail open, `Fail` = fail closed |
-| `webhook.requireDigestPinning` | `true` | Deny images not pinned by sha256 digest |
+| `webhook.requireDigestPinning` | `false` | `false` = resolve tag digests from the registry; `true` = deny images not pinned by sha256 digest |
+| `webhook.registryCredentialsSecret` | `""` | Existing `kubernetes.io/dockerconfigjson` Secret for resolving tags in private registries |
 | `webhook.denyUnknownArtifacts` | `true` | Deny artifacts Kosli has never seen (404) |
 | `webhook.cacheTTL` | `60s` | In-memory assert-result cache TTL |
 | `webhook.namespaceSelector.mode` | `exclude` | `exclude` or `optIn` |

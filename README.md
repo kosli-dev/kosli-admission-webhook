@@ -1,3 +1,5 @@
+[![test](https://github.com/kosli-dev/kosli-admission-webhook/actions/workflows/test.yaml/badge.svg)](https://github.com/kosli-dev/kosli-admission-webhook/actions/workflows/test.yaml)
+
 # kosli-admission-webhook
 
 > [!WARNING]
@@ -25,6 +27,8 @@ environment policies and rejects non-compliant pods at admission time.
 
 ```bash
 make all            # vet, test, build, helm-lint
+make e2e            # kind-based end-to-end test (make e2e-clean tears down
+                    # a cluster kept by KEEP=1/KEEP_ON_FAIL=1)
 make docker IMAGE=ghcr.io/kosli-dev/kosli-webhook TAG=1.0.0
 helm install kosli-webhook charts/kosli-admission-webhook \
   -n kosli-system --create-namespace \
@@ -34,11 +38,29 @@ helm install kosli-webhook charts/kosli-admission-webhook \
 
 ## Design notes
 
-- Pods must reference images by digest (`repo@sha256:...`); the digest is the
-  Kosli fingerprint. Configurable via `REQUIRE_DIGEST_PINNING`.
+- Any image reference works: digest-pinned images (`repo@sha256:...`) use the
+  digest directly, and plain tags are resolved to their sha256 digest via a
+  registry manifest HEAD request at admission time. The digest is the Kosli
+  fingerprint. Auth uses the Docker keychain: public registries work
+  anonymously; for private registries point the chart's
+  `webhook.registryCredentialsSecret` at an existing dockerconfigjson
+  Secret. Caveat: tags are mutable, so the verdict applies to what
+  the tag pointed at during admission — a moved tag or a node-cached image
+  under `imagePullPolicy: IfNotPresent` can diverge from the asserted
+  digest. Set `REQUIRE_DIGEST_PINNING=true` to deny unpinned images outright
+  — the strict-guarantee mode.
+- Registry digest resolutions are cached with the same TTL as assert results
+  (`CACHE_TTL`), so a hot tag costs one HEAD request per TTL window.
 - Transport errors and unknown artifacts deny with an explicit reason rather
   than surfacing as webhook errors, so behavior is deterministic regardless of
-  `failurePolicy`.
+  `failurePolicy`. Only definitive verdicts (compliant, non-compliant,
+  unknown artifact) are cached; API failures deny but are retried on the
+  next admission, so recovery is immediate once the API is reachable again.
+- Logging: every Kosli verdict (compliant or not) is an info-level
+  `kosli assert result` line, every tag resolution a `resolved tag to
+  digest` line, and every admission decision an `admission decision`
+  line; API failures log at error with status and body. `LOG_LEVEL=debug`
+  adds assert request URLs and cache hits.
 - Graceful shutdown: SIGTERM flips `/readyz` to 503, waits `SHUTDOWN_DELAY`,
   then drains in-flight admission reviews.
 - Pair with the [Kosli K8S Reporter](https://docs.kosli.com/helm/k8s_reporter)
