@@ -22,7 +22,7 @@
     "kosli": {
       "type": "object",
       "properties": {
-        "host": { "type": "string", "pattern": "^https://" },
+        "host": { "type": "string", "pattern": "^https?://" },
         "org": { "type": "string" },
         "environment": { "type": "string" },
         "policyNames": { "type": "array", "items": { "type": "string" } },
@@ -54,7 +54,10 @@
         "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 30 },
         "requireDigestPinning": { "type": "boolean" },
         "denyUnknownArtifacts": { "type": "boolean" },
-        "cacheTTL": { "type": "string", "pattern": "^[0-9]+(ns|us|ms|s|m|h)$|^0$" },
+        "cacheTTL": { "anyOf": [
+            { "type": "string", "pattern": "^[0-9]+(ns|us|ms|s|m|h)$|^0$" },
+            { "type": "integer", "const": 0 }
+            ] },
         "shutdownDelay": { "type": "string", "pattern": "^[0-9]+(ns|us|ms|s|m|h)$|^0$" },
         "interceptUpdates": { "type": "boolean" },
         "matchConditions": {
