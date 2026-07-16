@@ -1,8 +1,9 @@
 name: test
 on:
-  pull_request: {}
+  pull_request:
+    types: [opened, synchronize, reopened]
   push:
-    branches: [main]
+    branches: ['*']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -48,3 +49,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: docker build -t kosli-webhook:ci .
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: make e2e-mock
