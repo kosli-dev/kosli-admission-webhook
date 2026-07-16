@@ -21,7 +21,8 @@ environment policies and rejects non-compliant pods at admission time.
   platform notes (EKS, GKE/Autopilot, AKS, OpenShift), and all values
 - **Deferred work**: see [TODO.md](TODO.md)
 
-> Community project — not affiliated with Kosli.
+> [!NOTE]
+> Use with care and some features might change.
 
 ## Quick start
 
@@ -65,3 +66,18 @@ helm install kosli-webhook charts/kosli-admission-webhook \
   then drains in-flight admission reviews.
 - Pair with the [Kosli K8S Reporter](https://docs.kosli.com/helm/k8s_reporter)
   for continuous runtime monitoring of the same environment.
+
+## Support
+
+- **Documentation**: https://docs.kosli.com
+- **Issues**: [GitHub Issues](https://github.com/kosli-dev/kosli-admission-webhook/issues)
+- **Email**: support@kosli.com
+
+## License
+
+This provider is released under the [MIT License](LICENSE).
+
+## About Kosli
+
+[Kosli](https://kosli.com) is a software intelligence platform that helps teams maintain visibility and governance over their Software Delivery Lifecycle (SDLC).
+
