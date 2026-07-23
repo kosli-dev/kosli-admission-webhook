@@ -39,7 +39,7 @@ jobs:
         with:
           # goreleaser needs full history + tags to compute the changelog
           fetch-depth: 0
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: '.go-version'
           check-latest: true
