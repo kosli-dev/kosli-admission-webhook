@@ -3,7 +3,7 @@ module github.com/kosli-dev/kosli-admission-webhook
 go 1.26.0
 
 require (
-	github.com/google/go-containerregistry v0.21.8
+	github.com/google/go-containerregistry v0.21.9
 	k8s.io/api v0.36.3
 	k8s.io/apimachinery v0.36.3
 )
